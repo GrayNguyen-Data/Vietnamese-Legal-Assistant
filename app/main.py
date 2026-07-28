@@ -8,10 +8,12 @@ Mở docs tương tác: http://localhost:8000/docs
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from app.api import routes_chat
 from app.config import settings
+from app.guardrails.checks import GuardrailViolation
 
 app = FastAPI(
     title=settings.app_name,
@@ -20,6 +22,15 @@ app = FastAPI(
 )
 
 app.include_router(routes_chat.router)
+
+
+@app.exception_handler(GuardrailViolation)
+def guardrail_violation_handler(request: Request, exc: GuardrailViolation) -> JSONResponse:
+    """Input bị guardrails chặn (Buổi 7) → HTTP 400 với lý do rõ ràng."""
+    return JSONResponse(
+        status_code=400,
+        content={"error": "input_rejected", "reason": exc.reason, "details": exc.details},
+    )
 
 
 @app.get("/health", tags=["meta"])
