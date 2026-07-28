@@ -38,6 +38,10 @@ def trace_answer(name: str, question: str, metadata: dict[str, Any] | None = Non
         with trace_answer("answer", question) as t:
             result = ...
             t["output"] = result
+
+    `t["_span"]` là span cha đang mở — truyền xuống cho trace_step() để tạo
+    nested span (xem trace_step()). Chỉ có mặt khi monitoring bật; các call site
+    dùng t.get("_span") nên tự an toàn khi tắt.
     """
     if not settings.monitoring_enabled:
         yield {}
@@ -46,7 +50,7 @@ def trace_answer(name: str, question: str, metadata: dict[str, Any] | None = Non
     langfuse = _get_langfuse()
     start = time.perf_counter()
     span = langfuse.start_observation(name=name, input=question, metadata=metadata or {})
-    box: dict[str, Any] = {}
+    box: dict[str, Any] = {"_span": span}
     try:
         yield box
     except Exception as exc:
@@ -56,6 +60,36 @@ def trace_answer(name: str, question: str, metadata: dict[str, Any] | None = Non
         span.update(output=box.get("output"), metadata={"latency_s": time.perf_counter() - start})
         span.end()
         langfuse.flush()
+
+
+@contextmanager
+def trace_step(parent_span: Any, name: str, input: Any = None, metadata: dict[str, Any] | None = None):
+    """Nested child span dưới `parent_span` (lấy từ trace_answer's t["_span"]).
+
+    Dùng trong LangGraph node để thấy từng bước (decompose/retrieve/grade/...)
+    lồng nhau trong LangFuse — thay vì 1 span phẳng cho toàn bộ graph.invoke().
+    No-op nếu parent_span là None (monitoring tắt, hoặc node chạy ngoài trace).
+
+    Dùng như:
+        with trace_step(parent_span, "grade_documents", input=question) as t:
+            ...
+            t["output"] = graded
+    """
+    if parent_span is None:
+        yield {}
+        return
+
+    start = time.perf_counter()
+    span = parent_span.start_observation(name=name, input=input, metadata=metadata or {})
+    box: dict[str, Any] = {}
+    try:
+        yield box
+    except Exception as exc:
+        span.update(level="ERROR", status_message=str(exc))
+        raise
+    finally:
+        span.update(output=box.get("output"), metadata={"latency_s": time.perf_counter() - start})
+        span.end()
 
 
 def trace_stream(name: str, question: str, tokens: Iterator[str]) -> Iterator[str]:

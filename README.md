@@ -245,6 +245,15 @@ uvicorn app.main:app --reload
 
 - Docs tương tác: <http://localhost:8000/docs>
 - Health check (không cần key): <http://localhost:8000/health>
+- **Demo UI**: <http://localhost:8000/> — chat interface đơn giản (`app/static/chat.html`),
+  lịch sử chat lưu ở `localStorage` của trình duyệt (không có backend session/DB).
+  Bấm **"Ingest dữ liệu"** trong UI trước khi hỏi lần đầu — với `QDRANT_URL=:memory:`
+  (mặc định), mỗi process server có Qdrant riêng, ingest ở CLI process khác sẽ
+  không nạp được cho server đang chạy; nút này gọi `POST /admin/ingest` để ingest
+  đúng vào trong process server. Toggle **Streaming** (`/chat/stream`) và
+  **Agent (CRAG)** (`/chat/agent`, hiện thêm sources + web-search fallback badge)
+  để so sánh 2 pipeline trực tiếp. Câu hỏi bị chặn bởi guardrails hiện dạng bubble
+  lỗi riêng (đọc HTTP 400 từ exception handler trong `main.py`).
 
 ### Thử nghiệm
 
@@ -279,9 +288,10 @@ pytest          # không gọi API thật (mock LLM), không cần key
 Modelfile              # Buổi 2 — Ollama model có sẵn persona pháp lý
 app/
 ├── config.py          # đọc .env (điểm duy nhất chạm secrets)
-├── main.py            # FastAPI app
+├── main.py            # FastAPI app + phục vụ static/chat.html tại "/"
 ├── pipeline.py        # orchestrator: retrieve(stub) → prompt → llm
-├── api/               # FastAPI routes + request/response schemas
+├── static/            # ✓ chat.html — demo UI, lịch sử lưu localStorage
+├── api/               # FastAPI routes (routes_chat.py, routes_admin.py) + schemas
 ├── llm/               # native SDK: completion, streaming, backoff, key rotation
 │                      #   + backends.py (Buổi 2: openai/ollama/vllm)
 ├── prompts/           # role prompting, few-shot, chèn context RAG
